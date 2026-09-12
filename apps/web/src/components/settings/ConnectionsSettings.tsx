@@ -6,6 +6,7 @@ import {
   TerminalIcon,
 } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/unstable/reactivity";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -1837,12 +1838,24 @@ export function ConnectionsSettings() {
   // Machines "Update all" can reach: switched on, connected, behind the client
   // version, and not already mid-update. Manual-update machines stay in the list
   // with their own copy-command action.
+  const savedServerUpdateStatesAtom = useMemo(
+    () =>
+      Atom.make((get) =>
+        savedEnvironments.map((environment) => ({
+          environment,
+          updateStatus: get(serverEnvironment.updateStateAtom(environment.environmentId)).status,
+        })),
+      ),
+    [savedEnvironments],
+  );
+  const savedServerUpdateStates = useAtomValue(savedServerUpdateStatesAtom);
   const savedServerUpdateTargets = useMemo(
     () =>
-      savedEnvironments.flatMap((environment): ServerUpdateTarget[] => {
+      savedServerUpdateStates.flatMap(({ environment, updateStatus }): ServerUpdateTarget[] => {
         const mismatch = resolveServerConfigVersionMismatch(environment.serverConfig);
         if (
           !mismatch ||
+          updateStatus === "running" ||
           !environment.entry.enabled ||
           environment.connection.phase !== "connected" ||
           isDesktopLocalConnectionTarget(environment.entry.target)
@@ -1862,7 +1875,7 @@ export function ConnectionsSettings() {
           },
         ];
       }),
-    [savedEnvironments],
+    [savedServerUpdateStates],
   );
   // Switched-off machines never receive threads, so they stay out of the
   // load balancing list.

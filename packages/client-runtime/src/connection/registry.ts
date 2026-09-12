@@ -410,14 +410,19 @@ export const make = Effect.gen(function* () {
   const register = Effect.fn("EnvironmentRegistry.register")(function* (
     registration: ConnectionRegistration,
   ) {
-    const entry = connectionRegistrationCatalogEntry(registration);
-    const environmentId = entry.target.environmentId;
+    const registered = connectionRegistrationCatalogEntry(registration);
+    const environmentId = registered.target.environmentId;
     yield* withLeaseLock(
       environmentId,
       Effect.gen(function* () {
         if ((yield* Ref.get(platformEnvironmentIds)).has(environmentId)) {
           return;
         }
+        // Editing a saved environment re-registers it; that must not switch a
+        // disabled one back on.
+        const previous = (yield* SubscriptionRef.get(entries)).get(environmentId);
+        const entry: ConnectionCatalogEntry =
+          previous === undefined ? registered : { ...registered, enabled: previous.enabled };
         yield* registrations.register(registration);
         yield* Ref.update(persistedTargetsByEnvironment, (current) => {
           const next = new Map(current);
@@ -685,6 +690,24 @@ export const make = Effect.gen(function* () {
           yield* enabled ? lease.supervisor.connect : lease.supervisor.disconnect;
         } else if (enabled) {
           yield* createServiceScope(next);
+        }
+        // The supervisor only owns the RPC session. A managed SSH backend and
+        // its tunnel outlive it, so switching off tears those down as well.
+        if (
+          !enabled &&
+          entry.target._tag === "SshConnectionTarget" &&
+          Option.isSome(entry.profile) &&
+          isSshConnectionProfile(entry.profile.value)
+        ) {
+          yield* ssh.disconnect(entry.profile.value.target).pipe(
+            Effect.tapError((error) =>
+              Effect.logWarning("Could not disconnect the switched-off SSH environment.", {
+                environmentId,
+                error,
+              }),
+            ),
+            Effect.ignore,
+          );
         }
       }),
     );

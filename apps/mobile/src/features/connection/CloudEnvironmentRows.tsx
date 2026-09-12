@@ -34,6 +34,8 @@ import { type RelayEnvironmentView, useConnectionController } from "./useConnect
 interface CloudEnvironmentRowsProps {
   readonly connectedCloudEnvironments: ReadonlyArray<ConnectedEnvironmentSummary>;
   readonly onSetEnvironmentEnabled: (environmentId: EnvironmentId, enabled: boolean) => void;
+  /** Long-press on a saved row. The callback owns the confirm. */
+  readonly onRemoveEnvironment: (environmentId: EnvironmentId) => void;
   readonly showcaseAvailableEnvironments?: ReadonlyArray<RelayEnvironmentView>;
   readonly showcaseSignedIn?: boolean;
   /**
@@ -142,6 +144,7 @@ function CloudEnvironmentRowsContent(
               onSetEnabled={(enabled) =>
                 props.onSetEnvironmentEnabled(environment.environmentId, enabled)
               }
+              onRemove={() => props.onRemoveEnvironment(environment.environmentId)}
               errorExpanded={expandedErrorId === environment.environmentId}
               onToggleError={() => handleToggleCloudError(environment.environmentId)}
             />
@@ -203,13 +206,14 @@ function CloudEnvironmentRowsContent(
 /**
  * A saved T3 Connect environment. The switch turns it on or off; off keeps the
  * registration and cache but drops the connection and hides its errors.
- * Removal lives on the Settings environments screen.
+ * Long-press removes it from this device.
  */
 function ConnectedCloudEnvironmentRow(props: {
   readonly environment: ConnectedEnvironmentSummary;
   readonly borderTop: boolean;
   readonly errorExpanded: boolean;
   readonly onSetEnabled: (enabled: boolean) => void;
+  readonly onRemove: () => void;
   readonly onToggleError: () => void;
 }) {
   const serverConfig = useAtomValue(
@@ -217,7 +221,10 @@ function ConnectedCloudEnvironmentRow(props: {
   );
   const enabled = props.environment.isEnabled;
   return (
-    <View>
+    <Pressable
+      accessibilityHint="Long press to remove from this device"
+      onLongPress={props.onRemove}
+    >
       <CloudEnvironmentRowShell
         borderTop={props.borderTop}
         connectionError={enabled ? props.environment.connectionError : null}
@@ -231,7 +238,7 @@ function ConnectedCloudEnvironmentRow(props: {
         {...(enabled ? {} : { statusText: "Off" })}
         value={enabled}
       />
-    </View>
+    </Pressable>
   );
 }
 

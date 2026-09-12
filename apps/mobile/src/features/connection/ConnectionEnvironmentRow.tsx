@@ -209,7 +209,8 @@ export function ConnectionEnvironmentRow(props: {
             )}
 
             <Pressable
-              className="h-[42px] w-[42px] items-center justify-center rounded-[14px] border border-input-border bg-input active:opacity-70"
+              className="h-[42px] w-[42px] items-center justify-center rounded-[14px] border border-input-border bg-input active:opacity-70 disabled:opacity-40"
+              disabled={!enabled}
               onPress={() => props.onReconnect(props.environment.environmentId)}
             >
               <SymbolView

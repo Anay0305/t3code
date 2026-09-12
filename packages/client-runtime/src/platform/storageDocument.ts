@@ -96,11 +96,11 @@ function removeConnectionMetadata(
           target.environmentId,
         )
       : document.remoteDpopTokens,
-    disabledEnvironmentIds: removeCatalogValue(
-      document.disabledEnvironmentIds,
-      (value) => value,
-      target.environmentId,
-    ),
+    // Re-registration passes `removeRemoteToken: false` and must keep the
+    // switched-off flag; only a real removal clears it.
+    disabledEnvironmentIds: removeRemoteToken
+      ? removeCatalogValue(document.disabledEnvironmentIds, (value) => value, target.environmentId)
+      : document.disabledEnvironmentIds,
   };
 }
 
@@ -114,15 +114,11 @@ export function registerConnectionInCatalog(
   );
   const cleaned =
     previous === undefined ? document : removeConnectionMetadata(document, previous, false);
-  // Registering is an explicit "connect", so it also clears a disabled flag.
+  // Re-registering (for example editing a label or URL) keeps the disabled
+  // flag; only `setConnectionEnabledInCatalog` or removal changes it.
   const next: ConnectionCatalogDocument = {
     ...cleaned,
     targets: replaceCatalogValue(cleaned.targets, (value) => value.environmentId, target),
-    disabledEnvironmentIds: removeCatalogValue(
-      cleaned.disabledEnvironmentIds,
-      (value) => value,
-      target.environmentId,
-    ),
   };
 
   switch (registration._tag) {

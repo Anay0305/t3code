@@ -239,7 +239,7 @@ describe("ConnectionCatalogDocument", () => {
     expect(
       setConnectionEnabledInCatalog(disabled, ENVIRONMENT_ID, true).disabledEnvironmentIds,
     ).toEqual([]);
-    // Re-registering is an explicit connect and clears the flag too.
+    // Re-registering (editing label or URL) keeps the flag.
     expect(
       registerConnectionInCatalog(
         disabled,
@@ -249,7 +249,7 @@ describe("ConnectionCatalogDocument", () => {
           credential: BEARER_CREDENTIAL,
         }),
       ).disabledEnvironmentIds,
-    ).toEqual([]);
+    ).toEqual([ENVIRONMENT_ID]);
     expect(removeConnectionFromCatalog(disabled, BEARER_TARGET).disabledEnvironmentIds).toEqual([]);
   });
 
