@@ -2480,12 +2480,12 @@ export function ConnectionsSettings() {
   // device. Switching off is the reversible path, so removal always confirms.
   const handleRemoveSavedBackend = useCallback(
     async (environment: EnvironmentPresentation) => {
-      const confirmed =
-        (await requestConfirmDialog(
-          `Remove ${environment.label} from this device?\nThis forgets its pairing, credentials, and cached threads here. Switch it off instead to keep it saved.`,
-          { variant: "destructive" },
-        )) ?? true;
-      if (!confirmed) {
+      // Fail closed: no mounted confirm host means no removal.
+      const confirmed = await requestConfirmDialog(
+        `Remove ${environment.label} from this device?\nThis forgets its pairing, credentials, and cached threads here. Switch it off instead to keep it saved.`,
+        { variant: "destructive" },
+      );
+      if (confirmed !== true) {
         return;
       }
       const environmentId = environment.environmentId;
