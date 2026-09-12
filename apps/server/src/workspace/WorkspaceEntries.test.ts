@@ -736,4 +736,95 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
       }),
     );
   });
+
+  describe("createDirectory", () => {
+    it.effect("creates the directory with missing parents and lists it afterwards", () =>
+      Effect.gen(function* () {
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-mkdir-" });
+
+        const result = yield* workspaceEntries.createDirectory({
+          path: path.join(cwd, "nested", "fun"),
+        });
+
+        expect(result).toEqual({ createdPath: path.join(cwd, "nested", "fun") });
+        expect(yield* fileSystem.exists(result.createdPath)).toBe(true);
+
+        const listing = yield* workspaceEntries.browse({
+          partialPath: yield* appendSeparator(path.join(cwd, "nested")),
+        });
+        expect(listing.entries).toEqual([
+          { name: "fun", fullPath: path.join(cwd, "nested", "fun") },
+        ]);
+      }),
+    );
+
+    it.effect("succeeds when the directory already exists", () =>
+      Effect.gen(function* () {
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-mkdir-existing-" });
+        yield* writeTextFile(cwd, "existing/keep.txt", "keep");
+
+        const result = yield* workspaceEntries.createDirectory({
+          path: path.join(cwd, "existing"),
+        });
+
+        expect(result).toEqual({ createdPath: path.join(cwd, "existing") });
+      }),
+    );
+
+    it.effect("resolves relative paths against the provided cwd", () =>
+      Effect.gen(function* () {
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-mkdir-relative-" });
+
+        const result = yield* workspaceEntries.createDirectory({
+          cwd,
+          path: "./tools",
+        });
+
+        expect(result).toEqual({ createdPath: path.join(cwd, "tools") });
+        expect(yield* fileSystem.exists(result.createdPath)).toBe(true);
+      }),
+    );
+
+    it.effect("rejects relative paths without cwd", () =>
+      Effect.gen(function* () {
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+
+        const error = yield* workspaceEntries
+          .createDirectory({
+            path: "./tools",
+          })
+          .pipe(Effect.flip);
+
+        expect(error._tag).toBe("WorkspaceEntriesCurrentProjectRequiredError");
+      }),
+    );
+
+    it.effect("fails with a structured error when the path is occupied by a file", () =>
+      Effect.gen(function* () {
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-mkdir-conflict-" });
+        yield* writeTextFile(cwd, "taken", "already a file");
+
+        const error = yield* workspaceEntries
+          .createDirectory({
+            path: path.join(cwd, "taken"),
+          })
+          .pipe(Effect.flip);
+
+        expect(error._tag).toBe("WorkspaceEntriesCreateDirectoryFailedError");
+        expect(error.message).toBe(
+          `Failed to create workspace directory '${path.join(cwd, "taken")}'.`,
+        );
+      }),
+    );
+  });
 });

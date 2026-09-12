@@ -775,15 +775,49 @@ function FolderBrowser(props: {
     ? browsePath.filterQuery.toLowerCase() === pinnedDirectoryName.toLowerCase()
     : browsePath.filterQuery === pinnedDirectoryName;
   const browseFilterQuery = pinnedDirectoryMatches ? "" : browsePath.filterQuery;
-  const { visibleEntries: visibleBrowseEntries } = useMemo(
+  const { visibleEntries: visibleBrowseEntries, exactEntry: exactBrowseEntry } = useMemo(
     () => filterFilesystemBrowseEntries(browseState.data?.entries ?? [], browseFilterQuery),
     [browseFilterQuery, browseState.data?.entries],
   );
+
+  const createDirectory = useAtomCommand(filesystemEnvironment.createDirectory, {
+    reportFailure: false,
+  });
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [createFolderError, setCreateFolderError] = useState<string | null>(null);
+  // Offered when the typed leaf names a folder that does not exist yet, so the
+  // destination tree can be shaped without leaving the app.
+  const creatableFolderName =
+    browseState.data !== null && browseFilterQuery.length > 0 && exactBrowseEntry === null
+      ? browseFilterQuery
+      : null;
+  const createBrowseFolder = async (): Promise<void> => {
+    if (creatableFolderName === null || isCreatingFolder) {
+      return;
+    }
+    setIsCreatingFolder(true);
+    setCreateFolderError(null);
+    const createResult = await createDirectory({
+      environmentId: props.environment.environmentId,
+      input: { path: appendBrowsePathSegment(browsePath.directoryPath, creatableFolderName) },
+    });
+    if (AsyncResult.isFailure(createResult)) {
+      setCreateFolderError(errorMessage(Cause.squash(createResult.cause)));
+      setIsCreatingFolder(false);
+      return;
+    }
+    // Reload the parent listing so the new folder is already there when the
+    // user browses back up, then step into the created directory.
+    browseState.refresh();
+    await props.navigateToBrowsePath({ browseDirectoryPath: createResult.value.createdPath });
+    setIsCreatingFolder(false);
+  };
 
   return (
     <>
       <SectionTitle>Browse folders</SectionTitle>
       {browseState.error ? <ErrorBanner message={browseState.error} /> : null}
+      {createFolderError ? <ErrorBanner message={createFolderError} /> : null}
       <ListSection>
         {browseState.isPending && browseState.data === null ? (
           <View className="items-center py-5">
@@ -834,6 +868,28 @@ function FolderBrowser(props: {
             }}
           />
         ))}
+        {creatableFolderName !== null ? (
+          <ListRow
+            title={`Create folder "${creatableFolderName}"`}
+            icon={
+              isCreatingFolder ? (
+                <ActivityIndicator colorClassName={"accent-icon-muted"} />
+              ) : (
+                <SymbolView
+                  name="folder.badge.plus"
+                  size={17}
+                  tintColorClassName={"accent-icon-muted"}
+                  type="monochrome"
+                />
+              )
+            }
+            isFirst={visibleBrowseEntries.length === 0 && !browsePath.canBrowseUp}
+            right={null}
+            onPress={() => {
+              void createBrowseFolder();
+            }}
+          />
+        ) : null}
       </ListSection>
     </>
   );

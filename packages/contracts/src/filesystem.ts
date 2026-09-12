@@ -21,6 +21,51 @@ export const FilesystemBrowseResult = Schema.Struct({
 });
 export type FilesystemBrowseResult = typeof FilesystemBrowseResult.Type;
 
+export const FilesystemCreateDirectoryInput = Schema.Struct({
+  path: TrimmedNonEmptyString.check(Schema.isMaxLength(FILESYSTEM_PATH_MAX_LENGTH)),
+  cwd: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(FILESYSTEM_PATH_MAX_LENGTH))),
+});
+export type FilesystemCreateDirectoryInput = typeof FilesystemCreateDirectoryInput.Type;
+
+export const FilesystemCreateDirectoryResult = Schema.Struct({
+  createdPath: TrimmedNonEmptyString,
+});
+export type FilesystemCreateDirectoryResult = typeof FilesystemCreateDirectoryResult.Type;
+
+export const FilesystemCreateDirectoryFailure = Schema.Literals([
+  "windows_path_unsupported",
+  "current_project_required",
+  "create_directory_failed",
+]);
+export type FilesystemCreateDirectoryFailure = typeof FilesystemCreateDirectoryFailure.Type;
+
+export class FilesystemCreateDirectoryError extends Schema.TaggedError<FilesystemCreateDirectoryError>()(
+  "FilesystemCreateDirectoryError",
+  {
+    path: TrimmedNonEmptyString,
+    cwd: Schema.optional(TrimmedNonEmptyString),
+    failure: FilesystemCreateDirectoryFailure,
+    platform: Schema.optional(TrimmedNonEmptyString),
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  // @effect-diagnostics-next-line overriddenSchemaConstructor:off
+  constructor(props: {
+    readonly path: string;
+    readonly cwd?: string | undefined;
+    readonly failure: FilesystemCreateDirectoryFailure;
+    readonly platform?: string;
+    readonly cause?: unknown;
+  }) {
+    const cwd = props.cwd === undefined ? "" : ` from '${props.cwd}'`;
+    super({
+      ...props,
+      message: `Failed to create directory '${props.path}'${cwd}.`,
+    } as any);
+  }
+}
+
 export const FilesystemBrowseFailure = Schema.Literals([
   "windows_path_unsupported",
   "current_project_required",

@@ -11,6 +11,8 @@ import * as Schema from "effect/Schema";
 import type {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
+  FilesystemCreateDirectoryInput,
+  FilesystemCreateDirectoryResult,
   ProjectListEntriesInput,
   ProjectListEntriesResult,
   ProjectSearchContentsInput,
@@ -66,6 +68,27 @@ export class WorkspaceEntriesReadDirectoryError extends Schema.TaggedError<Works
   }
 }
 
+export class WorkspaceEntriesCreateDirectoryFailedError extends Schema.TaggedError<WorkspaceEntriesCreateDirectoryFailedError>()(
+  "WorkspaceEntriesCreateDirectoryFailedError",
+  {
+    cwd: Schema.optional(Schema.String),
+    path: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    const cwd = this.cwd ? ` from '${this.cwd}'` : "";
+    return `Failed to create workspace directory '${this.path}'${cwd}.`;
+  }
+}
+
+export const WorkspaceEntriesCreateDirectoryError = Schema.Union([
+  WorkspaceEntriesWindowsPathUnsupportedError,
+  WorkspaceEntriesCurrentProjectRequiredError,
+  WorkspaceEntriesCreateDirectoryFailedError,
+]);
+export type WorkspaceEntriesCreateDirectoryError = typeof WorkspaceEntriesCreateDirectoryError.Type;
+
 export const WorkspaceEntriesBrowseError = Schema.Union([
   WorkspaceEntriesWindowsPathUnsupportedError,
   WorkspaceEntriesCurrentProjectRequiredError,
@@ -90,6 +113,9 @@ export class WorkspaceEntries extends Context.Service<
     readonly browse: (
       input: FilesystemBrowseInput,
     ) => Effect.Effect<FilesystemBrowseResult, WorkspaceEntriesBrowseError>;
+    readonly createDirectory: (
+      input: FilesystemCreateDirectoryInput,
+    ) => Effect.Effect<FilesystemCreateDirectoryResult, WorkspaceEntriesCreateDirectoryError>;
     readonly list: (
       input: ProjectListEntriesInput,
     ) => Effect.Effect<ProjectListEntriesResult, WorkspaceEntriesError>;
@@ -106,7 +132,10 @@ export class WorkspaceEntries extends Context.Service<
 const resolveBrowseTarget = Effect.fn("WorkspaceEntries.resolveBrowseTarget")(function* (
   input: FilesystemBrowseInput,
   path: Path.Path,
-): Effect.fn.Return<string, WorkspaceEntriesBrowseError> {
+): Effect.fn.Return<
+  string,
+  WorkspaceEntriesWindowsPathUnsupportedError | WorkspaceEntriesCurrentProjectRequiredError
+> {
   const platform = yield* HostProcessPlatform;
   if (platform !== "win32" && isWindowsAbsolutePath(input.partialPath)) {
     return yield* new WorkspaceEntriesWindowsPathUnsupportedError({
@@ -228,6 +257,27 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  const createDirectory: WorkspaceEntries["Service"]["createDirectory"] = Effect.fn(
+    "WorkspaceEntries.createDirectory",
+  )(function* (input) {
+    const resolvedPath = yield* resolveBrowseTarget(
+      { partialPath: input.path, ...(input.cwd === undefined ? {} : { cwd: input.cwd }) },
+      path,
+    );
+    // Missing parents are created too, so a typed-out nested path just works.
+    // An existing directory is a success, letting callers navigate into it.
+    yield* Effect.tryPromise({
+      try: () => NodeFSP.mkdir(resolvedPath, { recursive: true }),
+      catch: (cause) =>
+        new WorkspaceEntriesCreateDirectoryFailedError({
+          cwd: input.cwd,
+          path: input.path,
+          cause,
+        }),
+    });
+    return { createdPath: resolvedPath };
+  });
+
   const search: WorkspaceEntries["Service"]["search"] = Effect.fn("WorkspaceEntries.search")(
     function* (input) {
       const normalizedCwd = yield* normalizeWorkspaceRoot(input.cwd);
@@ -279,7 +329,7 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  return WorkspaceEntries.of({ browse, list, refresh, search, searchContents });
+  return WorkspaceEntries.of({ browse, createDirectory, list, refresh, search, searchContents });
 });
 
 export const layer = Layer.effect(WorkspaceEntries, make).pipe(

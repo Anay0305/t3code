@@ -635,6 +635,14 @@ function OpenCommandPaletteDialog(props: {
   const cloneRepository = useAtomCommand(sourceControlEnvironment.cloneRepository, {
     reportFailure: false,
   });
+  const createBrowseDirectory = useAtomCommand(filesystemEnvironment.createDirectory, {
+    reportFailure: false,
+  });
+  const refreshBrowsePath = useAtomQueryRunner(filesystemEnvironment.browse, {
+    reportFailure: false,
+    reportDefect: false,
+    refresh: true,
+  });
   const { environments } = useEnvironments();
   const desktopLocalBootstraps = useDesktopLocalBootstraps();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -739,6 +747,7 @@ function OpenCommandPaletteDialog(props: {
     null,
   );
   const [isPickingProjectFolder, setIsPickingProjectFolder] = useState(false);
+  const [isCreatingBrowseFolder, setIsCreatingBrowseFolder] = useState(false);
   const [addProjectCloneFlow, setAddProjectCloneFlow] = useState<AddProjectCloneFlow | null>(null);
   const cloneLookupGeneration = useRef(0);
   const [isRemoteProjectLookingUp, setIsRemoteProjectLookingUp] = useState(false);
@@ -2653,16 +2662,97 @@ function OpenCommandPaletteDialog(props: {
         ? "Select"
         : undefined;
 
-  const footerTrailing = canOpenProjectFromFileManager ? (
-    <CommandFooterAction
-      disabled={isPickingProjectFolder}
-      onClick={() => {
-        void handleOpenProjectFromFileManager();
-      }}
-    >
-      {`Open in ${fileManagerName}`}
-    </CommandFooterAction>
-  ) : null;
+  // Enter on a typed leaf creates the folder only to register it as a project.
+  // This creates the same typed leaf as a plain directory and steps into it, so
+  // the destination tree can be shaped without leaving the picker.
+  const canCreateBrowseDirectory =
+    isBrowsing &&
+    !relativePathNeedsActiveProject &&
+    browseEnvironmentId !== null &&
+    canCreateProjectInEnvironment(browseEnvironment?.connection.phase) &&
+    browsePath.filterQuery.length > 0 &&
+    !isBrowsePending &&
+    exactBrowseEntry === null;
+
+  const handleCreateBrowseDirectory = async (): Promise<void> => {
+    if (!canCreateBrowseDirectory || browseEnvironmentId === null || isCreatingBrowseFolder) {
+      return;
+    }
+    setIsCreatingBrowseFolder(true);
+    try {
+      const createResult = await createBrowseDirectory({
+        environmentId: browseEnvironmentId,
+        input: {
+          path: query.trim(),
+          ...(currentProjectCwdForBrowse ? { cwd: currentProjectCwdForBrowse } : {}),
+        },
+      });
+      if (createResult._tag === "Failure") {
+        if (!isAtomCommandInterrupted(createResult)) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "New folder failed",
+              description: errorMessage(squashAtomCommandFailure(createResult)),
+            }),
+          );
+        }
+        return;
+      }
+      // Reload the parent listing so the new folder is already there when the
+      // user browses back up, then step into the created directory.
+      void refreshBrowsePath({
+        environmentId: browseEnvironmentId,
+        input: {
+          partialPath: browsePath.directoryPath,
+          ...(currentProjectCwdForBrowse ? { cwd: currentProjectCwdForBrowse } : {}),
+        },
+      });
+      const nextQuery = getCloneDestinationPath(
+        createResult.value.createdPath,
+        pinnedCloneDirectoryName,
+      );
+      await browseNavigation.run(
+        () => prefetchBrowsePath(getBrowseDirectoryPath(nextQuery)),
+        () => {
+          setHighlightedItemValue(null);
+          setQuery(nextQuery);
+          setBrowseGeneration((generation) => generation + 1);
+        },
+      );
+    } finally {
+      setIsCreatingBrowseFolder(false);
+    }
+  };
+
+  const footerTrailing =
+    isBrowsing || canOpenProjectFromFileManager ? (
+      <div className="flex items-center gap-2">
+        {isBrowsing ? (
+          <CommandFooterAction
+            disabled={!canCreateBrowseDirectory || isCreatingBrowseFolder}
+            title={
+              canCreateBrowseDirectory ? undefined : "Type a new folder name at the end of the path"
+            }
+            onClick={() => {
+              void handleCreateBrowseDirectory();
+            }}
+          >
+            New folder
+          </CommandFooterAction>
+        ) : null}
+        {canOpenProjectFromFileManager ? (
+          <CommandFooterAction
+            disabled={isPickingProjectFolder}
+            onClick={() => {
+              void handleOpenProjectFromFileManager();
+            }}
+          >
+            {`Open in ${fileManagerName}`}
+          </CommandFooterAction>
+        ) : null}
+      </div>
+    ) : null;
 
   return (
     <CommandPaletteContent
