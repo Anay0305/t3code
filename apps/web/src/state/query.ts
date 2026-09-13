@@ -23,6 +23,10 @@ export function formatEnvironmentQueryError(cause: Cause.Cause<unknown>): string
     : "The environment request failed.";
 }
 
+// A success the picker's own navigation prefetched moments before the atom
+// mounts is fresh; only values that sat in the warm cache need revalidation.
+const WARM_QUERY_FRESH_MS = 500;
+
 /**
  * Revalidates an environment query that mounts onto a warm cached atom.
  *
@@ -31,8 +35,10 @@ export function formatEnvironmentQueryError(cause: Cause.Cause<unknown>): string
  * remounts onto a warm node therefore renders the cached value and never
  * refetches, which freezes reads whose ground truth changes outside the app,
  * such as the filesystem browse listing. Refreshes once per atom when it
- * already holds settled data at subscribe time; cold atoms are left to their
- * own initial fetch.
+ * mounts holding a settled result: successes older than a short freshness
+ * window (so navigation prefetches are not fetched twice) and failures always
+ * (so a transient error does not stick for the whole TTL). Cold atoms are
+ * left to their own initial fetch.
  */
 export function useWarmEnvironmentQueryRevalidation<A, E>(
   atom: Atom.Atom<AsyncResult.AsyncResult<A, E>> | null,
@@ -45,9 +51,13 @@ export function useWarmEnvironmentQueryRevalidation<A, E>(
       return;
     }
     revalidatedAtom.current = atom;
-    if (result._tag === "Success" && !result.waiting) {
-      refresh();
+    if (result.waiting || result._tag === "Initial") {
+      return;
     }
+    if (result._tag === "Success" && Date.now() - result.timestamp < WARM_QUERY_FRESH_MS) {
+      return;
+    }
+    refresh();
   }, [atom, refresh, result]);
 }
 
