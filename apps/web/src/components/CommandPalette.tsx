@@ -31,6 +31,7 @@ import { resolveThreadReferenceCopyTarget } from "@t3tools/shared/threadReferenc
 import {
   canPreloadBrowsePath,
   createBrowseNavigationCoordinator,
+  createFilesystemBrowseSession,
   filterFilesystemBrowseEntries,
   getFilesystemBrowsePath,
 } from "@t3tools/client-runtime/state/filesystem";
@@ -619,7 +620,8 @@ function OpenCommandPaletteDialog(props: {
   const lookupRepository = useAtomQueryRunner(sourceControlEnvironment.repository, {
     reportFailure: false,
   });
-  const loadBrowsePath = useAtomQueryRunner(filesystemEnvironment.browse, {
+  const [browse] = useState(() => createFilesystemBrowseSession(filesystemEnvironment.browse));
+  const loadBrowsePath = useAtomQueryRunner(browse, {
     reportFailure: false,
     reportDefect: false,
   });
@@ -1073,7 +1075,7 @@ function OpenCommandPaletteDialog(props: {
     !relativePathNeedsActiveProject;
   const browseQuery = useEnvironmentQuery(
     browseAccess.canReadFiles && hasBrowseTarget
-      ? filesystemEnvironment.browse({
+      ? browse({
           environmentId: browseEnvironmentId,
           input: {
             partialPath: browsePath.directoryPath,

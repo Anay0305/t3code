@@ -32,6 +32,7 @@ import {
 import {
   canPreloadBrowsePath,
   createBrowseNavigationCoordinator,
+  createFilesystemBrowseSession,
   filterFilesystemBrowseEntries,
   getFilesystemBrowsePath,
   resolveFilesystemReadAccess,
@@ -307,7 +308,8 @@ function useBrowsePathInput(environment: EnvironmentOption | null, pinnedDirecto
   );
   const previousEnvironmentIdRef = useRef(environmentId);
   const environmentRuntime = useRemoteEnvironmentRuntime(environmentId);
-  const loadBrowsePath = useAtomQueryRunner(filesystemEnvironment.browse, {
+  const [browse] = useState(() => createFilesystemBrowseSession(filesystemEnvironment.browse));
+  const loadBrowsePath = useAtomQueryRunner(browse, {
     reportFailure: false,
     reportDefect: false,
   });
@@ -388,7 +390,7 @@ function useBrowsePathInput(environment: EnvironmentOption | null, pinnedDirecto
     [browseNavigation],
   );
 
-  return { isBrowseNavigating, pathInput, setPathInput, navigateToBrowsePath };
+  return { browse, isBrowseNavigating, pathInput, setPathInput, navigateToBrowsePath };
 }
 
 function useEnvironmentOptions(): ReadonlyArray<EnvironmentOption> {
@@ -860,6 +862,7 @@ export function AddProjectRepositoryScreen(props: {
 }
 
 function FolderBrowser(props: {
+  readonly browse: typeof filesystemEnvironment.browse;
   readonly environment: EnvironmentOption;
   readonly pathInput: string;
   readonly setPathInput: (path: string) => void;
@@ -891,7 +894,7 @@ function FolderBrowser(props: {
   const browseState = useEnvironmentQuery(
     !canReadFiles || browseInput === null
       ? null
-      : filesystemEnvironment.browse({
+      : props.browse({
           environmentId: props.environment.environmentId,
           input: browseInput,
         }),
@@ -1241,7 +1244,7 @@ export function AddProjectLocalFolderScreen(props: { readonly environmentId?: st
     AuthOrchestrationOperateScope,
   );
   const createProject = useCreateProject(environment);
-  const { isBrowseNavigating, navigateToBrowsePath, pathInput, setPathInput } =
+  const { browse, isBrowseNavigating, navigateToBrowsePath, pathInput, setPathInput } =
     useBrowsePathInput(environment);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1283,6 +1286,7 @@ export function AddProjectLocalFolderScreen(props: { readonly environmentId?: st
             loading={isSubmitting}
           />
           <FolderBrowser
+            browse={browse}
             environment={environment}
             navigateToBrowsePath={navigateToBrowsePath}
             pathInput={pathInput}
@@ -1327,10 +1331,8 @@ export function AddProjectDestinationScreen(props: {
   // Trim once here: the path input and the folder-list filter must compare the
   // same value, or a deep link with a padded param empties the folder picker.
   const repositoryName = stringParam(props.repositoryName)?.trim() ?? "";
-  const { isBrowseNavigating, navigateToBrowsePath, pathInput, setPathInput } = useBrowsePathInput(
-    environment,
-    repositoryName,
-  );
+  const { browse, isBrowseNavigating, navigateToBrowsePath, pathInput, setPathInput } =
+    useBrowsePathInput(environment, repositoryName);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1453,6 +1455,7 @@ export function AddProjectDestinationScreen(props: {
             </Text>
           ) : null}
           <FolderBrowser
+            browse={browse}
             environment={environment}
             navigateToBrowsePath={navigateToBrowsePath}
             pathInput={pathInput}
