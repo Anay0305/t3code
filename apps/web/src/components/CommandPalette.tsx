@@ -82,7 +82,6 @@ import {
 } from "lucide-react";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
 import {
-  useCallback,
   useContext,
   useDeferredValue,
   useEffect,
@@ -1037,40 +1036,35 @@ function OpenCommandPaletteDialog(props: {
         })
       : filterFilesystemBrowseEntries(browseEntries, browsePath.filterQuery);
 
-  const prefetchBrowsePath = useCallback(
-    async (
-      partialPath: string,
-      environmentId: EnvironmentId | null = browseEnvironmentId,
-      cwd: string | null = currentProjectCwdForBrowse,
-      session = browse,
-    ): Promise<void> => {
-      if (!environmentId) {
-        return;
-      }
-      const environment = environments.find(
-        (candidate) => candidate.environmentId === environmentId,
-      );
-      if (
-        !readEnvironmentScope(environmentId, AuthFilesystemReadScope) ||
-        !canPreloadBrowsePath(environment?.connection.phase)
-      ) {
-        return;
-      }
+  const prefetchBrowsePath = async (
+    partialPath: string,
+    environmentId: EnvironmentId | null = browseEnvironmentId,
+    cwd: string | null = currentProjectCwdForBrowse,
+    session = browse,
+  ): Promise<void> => {
+    if (!environmentId) {
+      return;
+    }
+    const environment = environments.find((candidate) => candidate.environmentId === environmentId);
+    if (
+      !readEnvironmentScope(environmentId, AuthFilesystemReadScope) ||
+      !canPreloadBrowsePath(environment?.connection.phase)
+    ) {
+      return;
+    }
 
-      await executeAtomQuery(
-        registry,
-        session({
-          environmentId,
-          input: {
-            partialPath,
-            ...(cwd ? { cwd } : {}),
-          },
-        }),
-        { reportFailure: false, reportDefect: false },
-      );
-    },
-    [browse, browseEnvironmentId, currentProjectCwdForBrowse, environments, registry],
-  );
+    await executeAtomQuery(
+      registry,
+      session({
+        environmentId,
+        input: {
+          partialPath,
+          ...(cwd ? { cwd } : {}),
+        },
+      }),
+      { reportFailure: false, reportDefect: false },
+    );
+  };
 
   useEffect(
     () => () => {
@@ -1338,44 +1332,36 @@ function OpenCommandPaletteDialog(props: {
     }
   }
 
-  const startAddProjectBrowse = useCallback(
-    async (environmentId: EnvironmentId): Promise<void> => {
-      const session = createFilesystemBrowseSession(filesystemEnvironment.browse);
-      const initialQuery = getAddProjectInitialQueryForEnvironment(environmentId);
-      const initialBrowsePath = getBrowseDirectoryPath(initialQuery);
-      const browseCwd = getBrowseCwdForEnvironment(environmentId);
-      const view: CommandPaletteView = {
-        addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
-        groups: [],
-        initialQuery,
-      };
+  const startAddProjectBrowse = async (environmentId: EnvironmentId): Promise<void> => {
+    const session = createFilesystemBrowseSession(filesystemEnvironment.browse);
+    const initialQuery = getAddProjectInitialQueryForEnvironment(environmentId);
+    const initialBrowsePath = getBrowseDirectoryPath(initialQuery);
+    const browseCwd = getBrowseCwdForEnvironment(environmentId);
+    const view: CommandPaletteView = {
+      addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
+      groups: [],
+      initialQuery,
+    };
 
-      await browseNavigation.run(
-        () =>
-          initialBrowsePath.length > 0
-            ? prefetchBrowsePath(initialBrowsePath, environmentId, browseCwd, session)
-            : Promise.resolve(),
-        () => {
-          setBrowse(() => session);
-          setAddProjectEnvironmentId(environmentId);
-          setAddProjectCloneFlow(null);
-          pushPaletteView(view);
-        },
-      );
-    },
-    [
-      browseNavigation,
-      getAddProjectInitialQueryForEnvironment,
-      getBrowseCwdForEnvironment,
-      prefetchBrowsePath,
-      pushPaletteView,
-    ],
-  );
+    await browseNavigation.run(
+      () =>
+        initialBrowsePath.length > 0
+          ? prefetchBrowsePath(initialBrowsePath, environmentId, browseCwd, session)
+          : Promise.resolve(),
+      () => {
+        setBrowse(() => session);
+        setAddProjectEnvironmentId(environmentId);
+        setAddProjectCloneFlow(null);
+        pushPaletteView(view);
+      },
+    );
+  };
 
   const startAddProjectClone = (
     environmentId: EnvironmentId,
     source: AddProjectRemoteSource,
   ): void => {
+    setBrowse(() => createFilesystemBrowseSession(filesystemEnvironment.browse));
     setAddProjectEnvironmentId(environmentId);
     setAddProjectCloneFlow({ step: "repository", environmentId, source });
     pushPaletteView({

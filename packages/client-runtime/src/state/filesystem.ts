@@ -111,16 +111,14 @@ export function canPreloadBrowsePath(
   return connectionPhase === "connected";
 }
 
-/** Share one session between the picker's preloads and rendered listings. */
 export function createFilesystemBrowseSession<T, A, E>(
   browse: (target: T) => Atom.Atom<AsyncResult.AsyncResult<A, E>>,
 ) {
   const family = Atom.family((source: Atom.Atom<AsyncResult.AsyncResult<A, E>>) => {
     const visited = new WeakSet<AtomRegistry.AtomRegistry>();
     return Atom.transform(source, (get) => {
-      // Idle-TTL nodes survive closing the picker, so SWR's mount check does
-      // not run on reopen. Refresh settled cached data once per picker session.
-      // Check before reading: even a synchronous cold load needs only one fetch.
+      // Idle-TTL nodes outlive the picker without remounting SWR. Check before
+      // reading so a synchronous cold load isn't mistaken for cached data.
       const cached = get.registry.getNodes().get(source)?.currentState() === "valid";
       const result = get.once(source);
       if (!visited.has(get.registry)) {
